@@ -1,0 +1,6 @@
+# hint_bits_checker extension
+comment = 'hint_bits_checker'
+default_version = '1.0'
+module_pathname = '$libdir/hint_bits_checker'
+relocatable = true
+
