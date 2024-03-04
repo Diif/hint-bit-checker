@@ -23,38 +23,26 @@ PG_MODULE_MAGIC;
 PGDLLEXPORT void bgw_log(Datum main_arg);
 
 extern void _PG_init(void);
-
+extern volatile int my_test_flag;
 void 
 bgw_log(Datum main_arg)
 {
     BackgroundWorkerUnblockSignals();
-    // Oid save_userid;
-    // int save_sec_context;
-    // GetUserIdAndSecContext(&save_userid, &save_sec_context);
-	// SetUserIdAndSecContext(BOOTSTRAP_SUPERUSERID,
-	// 						   save_sec_context | SECURITY_LOCAL_USERID_CHANGE);
-    // BaseInit();
-
-	InitPostgres("postgres", InvalidOid, NULL, InvalidOid, false, false, NULL);
-
-// we don't take care of memory free
+    
+    pg_usleep(60000000L);
+	InitPostgres("mydb", InvalidOid, NULL, InvalidOid, false, false, NULL);
+    
     while(true){ 
-        // pg_usleep(15000000L); //WaitLatch()
-        pg_usleep(10000000L); //WaitLatch()
-        
 
-        // elog(LOG, "##############");
-        // lock by LockRelationOid with AccessShareLock
-        // open with RelationIdGetRelation
-
-        // must be in transaction before getting reloid
+        // должны быть в транзакции перед получением id отношения
         StartTransactionCommand();
         Oid relId = RelnameGetRelid("stuff");
 
         if (relId == InvalidOid)
         {
-            elog(LOG, "Haven't got stuff oid:%d\n", relId);
+            elog(LOG, "Haven't got stuff table oid:%d\n", relId);
             CommitTransactionCommand();
+            pg_usleep(60000000L); 
             continue;
         }
 
@@ -62,7 +50,7 @@ bgw_log(Datum main_arg)
         Snapshot snap = GetTransactionSnapshot();
         PushActiveSnapshot(snap);
         snap = GetActiveSnapshot();
-        // copy maybe
+        
         Relation rel = relation_open(relId, AccessShareLock);
         TupleTableSlot* slot = table_slot_create(rel, NULL);
         TableScanDesc scan = table_beginscan(rel,snap,0,NULL);
@@ -70,23 +58,22 @@ bgw_log(Datum main_arg)
         int c = 0;
         while (table_scan_getnextslot(scan, ForwardScanDirection, slot))
 		{
-			// slot_getallattrs(slot);
             if (slot->tts_tid.ip_blkid.bi_hi == 33000)
             {
                 elog(LOG, "TID: %d\n" , slot->tts_tid);
             }
-            
         }
         elog(LOG, "End iteration\n");
         if (ActiveSnapshotSet())
 	    {
 		    PopActiveSnapshot();
 	    }
-        // TODO: TupleDesc reference leak: TupleDesc 0x7f384ba53718 (16387,-1) still referenced
+        
         table_endscan(scan);
         relation_close(rel, AccessShareLock);
         ExecDropSingleTupleTableSlot(slot);
         CommitTransactionCommand();
+        pg_usleep(300000000L);
     }
 }
 
@@ -98,7 +85,7 @@ _PG_init(void)
 
     memset(&worker, 0, sizeof(worker));
     worker.bgw_flags = BGWORKER_SHMEM_ACCESS;
-    worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
+    worker.bgw_start_time = BgWorkerStart_ConsistentState;
     worker.bgw_restart_time = BGW_NEVER_RESTART;
     sprintf(worker.bgw_library_name, "hint_bits_checker");
     sprintf(worker.bgw_function_name, "bgw_log");
